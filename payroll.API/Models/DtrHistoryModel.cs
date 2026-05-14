@@ -15,7 +15,7 @@ namespace payroll.API.Models
         public double OvertimeHours { get; set; }
         public DateTime DateUploaded { get; set; } = DateTime.Now;
 
-        // Isang beses lang dapat ito naka-declare dito
+        
         public List<DailyLog> Logs { get; set; } = new List<DailyLog>();
     }
 

@@ -1,7 +1,7 @@
 ﻿version: '3.8'
 
 services:
-  # 1. ANG DATABASE MO (PostgreSQL)
+  # 1. DATABASE (PostgreSQL)
   db:
     image: postgres:16
     container_name: payroll-postgres
@@ -15,7 +15,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # 2. ANG BACKEND API MO (C#)
+  # 2. API backend credentials
   api:
     build:
       context: .

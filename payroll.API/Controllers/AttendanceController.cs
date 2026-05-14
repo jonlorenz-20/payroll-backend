@@ -17,7 +17,7 @@ namespace payroll.API.Controllers
             _connectionString = config.GetConnectionString("DefaultConnection");
         }
 
-        // Kukuha ng History ng DTR
+        
         [HttpGet("history")]
         public async Task<IActionResult> GetDtrHistory()
         {
@@ -31,7 +31,7 @@ namespace payroll.API.Controllers
             return Ok(history);
         }
 
-        // Upload at Computation ng DTR
+        
         [HttpPost("upload")]
         public async Task<IActionResult> UploadDtr(IFormFile file, [FromQuery] DateTime cutoffStart, [FromQuery] DateTime cutoffEnd)
         {
@@ -39,14 +39,14 @@ namespace payroll.API.Controllers
 
             using var connection = new NpgsqlConnection(_connectionString);
 
-            // Kuhanin ang listahan ng employees para sa mapping ng names at shifts
+            
             var empList = (await connection.QueryAsync<EmployeeModel>(
                 "SELECT biometric_id AS BiometricId, name AS Name, shift_schedule AS ShiftSchedule FROM employees"
             )).ToList();
 
             var rawLogs = new List<(string Id, DateTime Time)>();
 
-            // 1. Pagbasa ng .dat file
+            
             using (var stream = new StreamReader(file.OpenReadStream()))
             {
                 string line;
@@ -55,7 +55,7 @@ namespace payroll.API.Controllers
                     var parts = line.Split(new char[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
                     if (parts.Length >= 3 && DateTime.TryParse(parts[1] + " " + parts[2], CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime logTime))
                     {
-                        // Filter lang sa loob ng cutoff range
+                        
                         if (logTime >= cutoffStart && logTime <= cutoffEnd.AddDays(1).AddTicks(-1))
                         {
                             rawLogs.Add((parts[0].Trim(), logTime));
@@ -80,30 +80,30 @@ namespace payroll.API.Controllers
                 double totalDays = 0, totalOT = 0, totalUT = 0, totalLate = 0;
                 var dailyLogsForClient = new List<DailyLog>();
 
-                // I-group ang logs kada araw para makuha ang Time In (Min) at Time Out (Max)
+                
                 foreach (var dayGroup in empGroup.GroupBy(x => x.Time.Date))
                 {
                     var times = dayGroup.Select(x => x.Time).ToList();
                     var tIn = times.Min();
                     var tOut = times.Max();
 
-                    if (tIn != tOut) // Siguradong may In at Out
+                    if (tIn != tOut) 
                     {
                         double dailyLate = 0, dailyUT = 0, dailyOT = 0;
 
-                        // Late Computation
+                        
                         if (tIn.TimeOfDay > gracePeriod)
                             dailyLate = (tIn.TimeOfDay - gracePeriod).TotalMinutes;
 
-                        // Dynamic Expected Time Out (In + 9 hours including lunch)
+                        
                         TimeSpan shiftStartReference = tIn.TimeOfDay < standardStart ? standardStart : tIn.TimeOfDay;
                         TimeSpan expectedOut = shiftStartReference.Add(TimeSpan.FromHours(9));
 
-                        // Undertime
+                        
                         if (tOut.TimeOfDay < expectedOut)
                             dailyUT = (expectedOut - tOut.TimeOfDay).TotalMinutes;
 
-                        // Overtime (minimum 1 hour after expected out)
+                        
                         else if (tOut.TimeOfDay >= expectedOut.Add(TimeSpan.FromHours(1)))
                             dailyOT = (tOut.TimeOfDay - expectedOut).TotalHours;
 
@@ -115,7 +115,7 @@ namespace payroll.API.Controllers
                         if (hrsPresent >= 4) totalDays += 1;
                         else if (hrsPresent > 0) totalDays += 0.5;
 
-                        // Idagdag sa listahan para sa MAUI Modal
+                        
                         dailyLogsForClient.Add(new DailyLog
                         {
                             Date = tIn.ToString("MMM dd, yyyy"),
@@ -139,7 +139,7 @@ namespace payroll.API.Controllers
                     Logs = dailyLogsForClient
                 };
 
-                // Database Sync
+                
                 string sqlDelete = "DELETE FROM dtr_history WHERE biometric_id = @BiometricId AND cutoff_period = @CutoffPeriod";
                 await connection.ExecuteAsync(sqlDelete, record);
 

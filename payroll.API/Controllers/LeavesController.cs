@@ -11,13 +11,13 @@ namespace payroll.API.Controllers
     {
         private readonly string _connectionString;
 
-        // Kinukuha nito yung password at connection mula sa appsettings.json
+        
         public LeavesController(IConfiguration config)
         {
             _connectionString = config.GetConnectionString("DefaultConnection");
         }
 
-        // 1. Kukuha ng listahan kung sino ang Pwede nang mag-leave (6-Month Rule Logic)
+        
         [HttpGet("eligibility")]
         public async Task<IActionResult> GetLeaveEligibility()
         {
@@ -29,12 +29,12 @@ namespace payroll.API.Controllers
 
             foreach (var emp in employees)
             {
-                // DITO NA GAGAWIN ANG MATH (BUSINESS LOGIC)
+                
                 int monthsEmployed = ((today.Year - emp.DateHired.Year) * 12) + today.Month - emp.DateHired.Month;
                 if (today.Day < emp.DateHired.Day) monthsEmployed--;
                 if (monthsEmployed < 0) monthsEmployed = 0;
 
-                bool isEligible = monthsEmployed >= 6; // Ang 6-MONTH RULE nasa Server na!
+                bool isEligible = monthsEmployed >= 6; 
 
                 eligibilityList.Add(new
                 {
@@ -48,7 +48,7 @@ namespace payroll.API.Controllers
             return Ok(eligibilityList.OrderByDescending(e => e.GetType().GetProperty("IsEligible").GetValue(e, null)));
         }
 
-        // 2. Magse-save ng Leave Request (Galing sa Employee Dashboard)
+        
         [HttpPost]
         public async Task<IActionResult> SubmitLeaveRequest([FromBody] LeaveRequestModel request)
         {
@@ -60,7 +60,7 @@ namespace payroll.API.Controllers
             return Ok(request);
         }
 
-        // 3. Kukuha ng Pending Leaves (Para sa Admin Dashboard)
+        
         [HttpGet("pending")]
         public async Task<IActionResult> GetPendingLeaves()
         {

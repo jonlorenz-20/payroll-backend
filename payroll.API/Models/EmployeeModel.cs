@@ -4,7 +4,7 @@ namespace payroll
 {
     public class EmployeeModel
     {
-        // Gawing capital 'I' para consistent sa naming convention
+       
         public int Id { get; set; }
 
         public string BiometricId { get; set; }

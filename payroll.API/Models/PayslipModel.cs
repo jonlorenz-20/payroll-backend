@@ -26,10 +26,10 @@ namespace payroll.API.Models
         public double Deductions { get; set; }
         public double NetPay { get; set; }
         public string DateGenerated { get; set; }
-
-        // Ginawang Nullable para iwas sa "The dtr_logs field is required" error
         public string? dtr_logs { get; set; }
-
         public List<DailyLog> DtrLogs { get; set; } = new List<DailyLog>();
+
+        // DAGDAG ITO:
+        public bool IsSent { get; set; }
     }
 }
