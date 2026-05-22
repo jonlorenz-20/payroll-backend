@@ -29,7 +29,7 @@ namespace payroll.API.Models
         public string? dtr_logs { get; set; }
         public List<DailyLog> DtrLogs { get; set; } = new List<DailyLog>();
 
-        // DAGDAG ITO:
+     
         public bool IsSent { get; set; }
     }
 }
