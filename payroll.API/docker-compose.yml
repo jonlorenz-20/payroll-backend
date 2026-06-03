@@ -28,7 +28,7 @@ services:
       - db
     environment:
       - ASPNETCORE_ENVIRONMENT=Development 
-      - ConnectionStrings__DefaultConnection=Server=db;Port=5433;Database=sekyurlink_payroll;User Id=postgres;Password=root;
+      - ConnectionStrings__DefaultConnection=Server=db;Port=5432;Database=sekyurlink_payroll;User Id=postgres;Password=root;
 
 volumes:
   pgdata:
