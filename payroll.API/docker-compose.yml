@@ -12,7 +12,7 @@ services:
       POSTGRES_DB: sekyurlink_payroll
     
     ports:
-      - "127.0.0.1:5433:5432"
+      - "5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
@@ -30,12 +30,11 @@ services:
     depends_on:
       - db
     environment:
-      - ASPNETCORE_ENVIRONMENT=Production 
+      - ASPNETCORE_ENVIRONMENT=Development 
       - ConnectionStrings__DefaultConnection=Server=db;Port=5432;Database=sekyurlink_payroll;User Id=postgres;Password=sekyurpayroll!;
-      - EmailSettings__AppPassword=gjboiqiuruectfza 
+      - EmailSettings__AppPassword=gjboiqiuruectfza
     networks:
       - payroll_network
-
 
 networks:
   payroll_network:
