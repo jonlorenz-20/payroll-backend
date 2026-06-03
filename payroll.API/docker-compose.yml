@@ -8,7 +8,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: sekyurpayroll!
+      POSTGRES_PASSWORD: root
       POSTGRES_DB: sekyurlink_payroll
     ports:
       - "5433:5432"
@@ -28,7 +28,7 @@ services:
       - db
     environment:
       - ASPNETCORE_ENVIRONMENT=Development 
-      - ConnectionStrings__DefaultConnection=Server=db;Port=5432;Database=sekyurlink_payroll;User Id=postgres;Password=sekyurpayroll!;
+      - ConnectionStrings__DefaultConnection=Server=db;Port=5432;Database=sekyurlink_payroll;User Id=postgres;Password=root;
 
 volumes:
   pgdata:
