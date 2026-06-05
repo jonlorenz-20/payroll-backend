@@ -2,6 +2,11 @@
 using Npgsql;
 using Dapper;
 using payroll.API.Models;
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Configuration;
+using System.Collections.Generic;
 
 namespace payroll.API.Controllers
 {
@@ -13,9 +18,10 @@ namespace payroll.API.Controllers
 
         public EmployeesController(IConfiguration config)
         {
-            _connectionString = config.GetConnectionString("DefaultConnection");
+            _connectionString = config.GetConnectionString("DefaultConnection")!;
         }
 
+        // 1. GET ALL EMPLOYEES
         [HttpGet]
         public async Task<IActionResult> GetEmployees()
         {
@@ -23,18 +29,19 @@ namespace payroll.API.Controllers
             {
                 using var connection = new NpgsqlConnection(_connectionString);
 
-                
                 string sql = @"SELECT 
                                 id AS Id, 
                                 biometric_id AS BiometricId, 
                                 name AS Name, 
                                 email AS Email, 
                                 department AS Department, 
+                                position AS Position, 
                                 basis AS Basis, 
                                 rate AS Rate, 
                                 username AS Username, 
                                 password AS Password, 
                                 shift_schedule AS ShiftSchedule, 
+                                day_off AS DayOff, 
                                 cash_advance_balance AS CashAdvanceBalance, 
                                 date_hired AS DateHired 
                                FROM employees";
@@ -48,6 +55,7 @@ namespace payroll.API.Controllers
             }
         }
 
+        // 2. SAVE NEW EMPLOYEE (PURE INSERT ONLY)
         [HttpPost]
         public async Task<IActionResult> SaveEmployee([FromBody] EmployeeModel emp)
         {
@@ -57,36 +65,68 @@ namespace payroll.API.Controllers
             {
                 using var connection = new NpgsqlConnection(_connectionString);
 
-               
                 string sql = @"
                     INSERT INTO employees 
-                    (biometric_id, name, email, department, basis, rate, username, password, shift_schedule, cash_advance_balance, date_hired) 
+                    (biometric_id, name, email, department, position, basis, rate, username, password, shift_schedule, day_off, cash_advance_balance, date_hired) 
                     VALUES 
-                    (@BiometricId, @Name, @Email, @Department, @Basis, @Rate, @Username, @Password, @ShiftSchedule, @CashAdvanceBalance, @DateHired)
-                    ON CONFLICT (username) DO UPDATE 
-                    SET name = EXCLUDED.name, 
-                        email = EXCLUDED.email, 
-                        department = EXCLUDED.department, 
-                        basis = EXCLUDED.basis, 
-                        rate = EXCLUDED.rate, 
-                        password = EXCLUDED.password,
-                        biometric_id = EXCLUDED.biometric_id,
-                        shift_schedule = EXCLUDED.shift_schedule,
-                        cash_advance_balance = EXCLUDED.cash_advance_balance,
-                        date_hired = EXCLUDED.date_hired;";
+                    (@BiometricId, @Name, @Email, @Department, @Position, @Basis, @Rate, @Username, @Password, @ShiftSchedule, @DayOff, @CashAdvanceBalance, @DateHired);";
 
                 await connection.ExecuteAsync(sql, emp);
                 return Ok(new { Message = "Employee saved successfully!" });
             }
             catch (Exception ex)
             {
-                
                 Console.WriteLine($"Save Error: {ex.Message}");
                 return StatusCode(500, $"Error saving employee: {ex.Message}");
             }
         }
 
-   
+        // 🎯 3. IDINAGDAG: DEDIKADONG PUT ENDPOINT PARA SA EDIT AT UPDATE WORKFLOWS
+        // Ito ang tatawagin ng `PayrollService.UpdateEmployeeAsync` mula sa frontend gamit ang Id ng employee!
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateEmployee(int id, [FromBody] EmployeeModel emp)
+        {
+            if (emp == null) return BadRequest("Employee data is null.");
+
+            try
+            {
+                using var connection = new NpgsqlConnection(_connectionString);
+
+                string sql = @"
+                    UPDATE employees 
+                    SET 
+                        biometric_id = @BiometricId,
+                        name = @Name, 
+                        email = @Email, 
+                        department = @Department, 
+                        position = @Position, 
+                        basis = @Basis, 
+                        rate = @Rate, 
+                        password = @Password,
+                        shift_schedule = @ShiftSchedule,
+                        day_off = @DayOff,
+                        cash_advance_balance = @CashAdvanceBalance,
+                        date_hired = @DateHired
+                    WHERE id = @Id;";
+
+                // Tinitiyak na ang Id mula sa URL parameter ang gagamitin sa query condition targeting
+                emp.Id = id;
+
+                int rowsAffected = await connection.ExecuteAsync(sql, emp);
+
+                if (rowsAffected > 0)
+                    return Ok(new { Message = "Employee updated successfully!" });
+                else
+                    return NotFound($"Employee with Id {id} not found.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Update Error: {ex.Message}");
+                return StatusCode(500, $"Error updating employee: {ex.Message}");
+            }
+        }
+
+        // 4. DELETE EMPLOYEE
         [HttpDelete("{name}")]
         public async Task<IActionResult> DeleteEmployee(string name)
         {
@@ -96,7 +136,6 @@ namespace payroll.API.Controllers
 
                 string sql = "DELETE FROM employees WHERE name = @Name";
 
-                
                 int rowsAffected = await connection.ExecuteAsync(sql, new { Name = name });
 
                 if (rowsAffected > 0)
@@ -106,7 +145,6 @@ namespace payroll.API.Controllers
             }
             catch (Npgsql.PostgresException ex) when (ex.SqlState == "23503")
             {
-                
                 return BadRequest("Bawal burahin: May existing payslips o records pa ang empleyadong ito sa system.");
             }
             catch (Exception ex)

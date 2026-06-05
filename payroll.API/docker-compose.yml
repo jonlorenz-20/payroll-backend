@@ -34,6 +34,7 @@ services:
       - ConnectionStrings__DefaultConnection=Server=db;Port=5432;Database=sekyurlink_payroll;User Id=postgres;Password=sekyurpayroll!;
       - EmailSettings__AppPassword=gjboiqiuruectfza
     networks:
+
       - payroll_network
 
 networks:

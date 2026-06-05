@@ -9,6 +9,11 @@ using MailKit.Security;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
 using QuestPDF.Infrastructure;
+using System.IO;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using System;
 
 namespace payroll.API.Controllers
 {
@@ -22,17 +27,16 @@ namespace payroll.API.Controllers
         public PayslipsController(IConfiguration config)
         {
             _config = config;
-            _connectionString = config.GetConnectionString("DefaultConnection");
+            _connectionString = config.GetConnectionString("DefaultConnection")!;
             QuestPDF.Settings.License = LicenseType.Community;
         }
 
-        // --- GET ALL PAYSLIPS (FIX: Added explicit SQL Aliases for C# PascalCase mapping) ---
+        // --- GET ALL PAYSLIPS ---
         [HttpGet]
         public async Task<IActionResult> GetPayslips()
         {
             using var connection = new NpgsqlConnection(_connectionString);
 
-            // FIX: explicit 'AS' aliases 
             string sqlSelectAll = @"SELECT 
                                         employee_name AS EmployeeName, 
                                         basis AS Basis, 
@@ -57,11 +61,12 @@ namespace payroll.API.Controllers
                                         cash_advance_deduction AS CashAdvanceDeduction, 
                                         date_generated AS DateGenerated, 
                                         dtr_logs AS dtr_logs, 
-                                        is_sent AS IsSent 
+                                        is_sent AS IsSent,
+                                        position AS Position
                                     FROM payslips";
 
             var result = await connection.QueryAsync<PayslipModel>(sqlSelectAll);
-            return Ok(result);
+            return Ok(result.ToList());
         }
 
         // --- BUTTON 1: SAVE & GENERATE (Draft Only) ---
@@ -70,19 +75,19 @@ namespace payroll.API.Controllers
         {
             if (slip == null) return BadRequest("Invalid payslip data.");
 
-            slip.IsSent = false; // Mark as draft
+            slip.IsSent = false;
             await InternalDatabaseSync(slip);
 
             return Ok(new { Message = "Draft Saved", NetPay = slip.NetPay });
         }
 
-        // --- BUTTON 3: SEND TO EMPLOYEE (Official + Email + Dashboard) ---
+        // --- BUTTON 3: SEND TO EMPLOYEE ---
         [HttpPost("send")]
         public async Task<IActionResult> SendPayslip([FromBody] PayslipModel slip)
         {
             if (slip == null) return BadRequest("Invalid payslip data.");
 
-            slip.IsSent = true; // Mark as official for Employee App visibility
+            slip.IsSent = true;
             await InternalDatabaseSync(slip);
 
             using var connection = new NpgsqlConnection(_connectionString);
@@ -100,7 +105,7 @@ namespace payroll.API.Controllers
             return Ok(new { Message = "Official Payslip Sent" });
         }
 
-        // --- BUTTON 2: EXPORT/PRINT (View in Chrome with Original Design) ---
+        // --- BUTTON 2: EXPORT/PRINT ---
         [HttpGet("view-browser/{name}/{period}")]
         public async Task<IActionResult> ViewInBrowser(string name, string period)
         {
@@ -113,7 +118,7 @@ namespace payroll.API.Controllers
                 @"SELECT employee_name, basis, hourly_rate, basic_pay, perfect_attendance, incentives, rest_day_pay, 
                          absence_deduction, late_minutes, late_deduction, undertime_minutes, undertime_deduction, 
                          overtime_hours, overtime_pay, others_deduction, deductions, net_pay, 
-                         sss, phil_health, pag_ibig, cash_advance_deduction, date_generated, dtr_logs 
+                         sss, phil_health, pag_ibig, cash_advance_deduction, date_generated, dtr_logs, position 
                   FROM payslips 
                   WHERE employee_name = @EmployeeName AND date_generated = @DateGenerated",
                 new { EmployeeName = decodedName, DateGenerated = decodedPeriod });
@@ -143,7 +148,8 @@ namespace payroll.API.Controllers
                 PhilHealth = Convert.ToDouble(row.phil_health ?? 0),
                 PagIBIG = Convert.ToDouble(row.pag_ibig ?? 0),
                 CashAdvanceDeduction = Convert.ToDouble(row.cash_advance_deduction ?? 0),
-                DateGenerated = row.date_generated
+                DateGenerated = row.date_generated,
+                Position = row.position ?? "Staff"
             };
 
             string logsJson = row.dtr_logs;
@@ -158,6 +164,7 @@ namespace payroll.API.Controllers
             return File(pdfBytes, "application/pdf");
         }
 
+        // 🎯 BULLETPROOF DATABASE SYNC: Selyadong isinusulat ang string DTR Logs sa database
         private async Task InternalDatabaseSync(PayslipModel slip)
         {
             using var connection = new NpgsqlConnection(_connectionString);
@@ -167,7 +174,17 @@ namespace payroll.API.Controllers
 
             slip.Deductions = totalDed;
             slip.NetPay = grossIncome - totalDed;
-            string serializedLogs = JsonSerializer.Serialize(slip.DtrLogs ?? new List<DailyLog>());
+
+            // Priority: Kung may string na ipinasa ang MAUI app (dtr_logs), yun ang gagamitin natin
+            string finalDtrString = "[]";
+            if (!string.IsNullOrEmpty(slip.dtr_logs) && slip.dtr_logs != "null")
+            {
+                finalDtrString = slip.dtr_logs;
+            }
+            else if (slip.DtrLogs != null && slip.DtrLogs.Count > 0)
+            {
+                finalDtrString = JsonSerializer.Serialize(slip.DtrLogs);
+            }
 
             await connection.OpenAsync();
             using var transaction = await connection.BeginTransactionAsync();
@@ -181,11 +198,11 @@ namespace payroll.API.Controllers
                 string sqlInsert = @"INSERT INTO payslips (employee_name, basis, hourly_rate, basic_pay, perfect_attendance, incentives, rest_day_pay, 
                                     absence_deduction, late_minutes, late_deduction, undertime_minutes, undertime_deduction, 
                                     overtime_hours, overtime_pay, others_deduction, deductions, net_pay, 
-                                    sss, phil_health, pag_ibig, cash_advance_deduction, date_generated, dtr_logs, is_sent) 
+                                    sss, phil_health, pag_ibig, cash_advance_deduction, date_generated, dtr_logs, is_sent, position) 
                                     VALUES (@EmpName, @Basis, @HourlyRate, @BasicPay, @PerfectAttendance, @Incentives, @RestDayPay, 
                                     @AbsenceDed, @LateMins, @LateDed, @UtMins, @UtDed, 
                                     @OtHours, @OtPay, @OthersDed, @Deductions, @NetPay, 
-                                    @SSS, @PhilHealth, @PagIBIG, @CashAdvanceDed, @DateGen, @DtrLogsStr, @IsSent)";
+                                    @SSS, @PhilHealth, @PagIBIG, @CashAdvanceDed, @DateGen, @DtrLogsStr, @IsSent, @Position)";
 
                 await connection.ExecuteAsync(sqlInsert, new
                 {
@@ -211,8 +228,9 @@ namespace payroll.API.Controllers
                     PagIBIG = slip.PagIBIG,
                     CashAdvanceDed = slip.CashAdvanceDeduction,
                     DateGen = slip.DateGenerated,
-                    DtrLogsStr = serializedLogs,
-                    IsSent = slip.IsSent
+                    DtrLogsStr = finalDtrString, // SIGURADONG MAY LAMAN ITO
+                    IsSent = slip.IsSent,
+                    Position = slip.Position ?? "Staff"
                 }, transaction);
 
                 await transaction.CommitAsync();
@@ -226,8 +244,8 @@ namespace payroll.API.Controllers
 
         private byte[] GeneratePayslipPdf(PayslipModel slip, double gross)
         {
-            
-            string logoPath = Path.Combine(AppContext.BaseDirectory, "Assets", "sekyur_logo.png");
+            string assetFolder = Path.Combine(AppContext.BaseDirectory, "Assets");
+            string logoPath = Path.Combine(assetFolder, "sekyur_logo.png");
 
             return Document.Create(container =>
             {
@@ -239,21 +257,19 @@ namespace payroll.API.Controllers
 
                     page.Content().Column(col =>
                     {
-                        
                         col.Item().Background("#5b6f82").PaddingVertical(15).PaddingHorizontal(30).Row(row =>
                         {
-                            
                             if (System.IO.File.Exists(logoPath))
                             {
                                 row.ConstantItem(95).AlignMiddle().Image(logoPath).FitArea();
-                                row.ConstantItem(15); 
+                                row.ConstantItem(15);
                             }
 
-                            
                             row.RelativeItem().AlignMiddle().Text("Sekyur-Link Employee Payslip").FontSize(14).FontColor(Colors.White);
                             row.RelativeItem().AlignRight().Column(c =>
                             {
                                 c.Item().AlignRight().Text(slip.EmployeeName ?? "Employee").FontSize(12).Bold().FontColor(Colors.White);
+                                c.Item().AlignRight().Text($"Designation: {slip.Position ?? "Staff"}").FontSize(10).FontColor(Colors.White).Italic();
                                 c.Item().AlignRight().Text(slip.DateGenerated ?? "N/A").FontSize(9).FontColor(Colors.White);
                             });
                         });
@@ -341,9 +357,9 @@ namespace payroll.API.Controllers
 
         private async Task SendEmailWithAttachment(string email, PayslipModel slip, byte[] pdfBytes)
         {
-            string senderName = _config["EmailSettings:SenderName"];
-            string senderEmail = _config["EmailSettings:SenderEmail"];
-            string appPassword = _config["EmailSettings:AppPassword"];
+            string senderName = _config["EmailSettings:SenderName"]!;
+            string senderEmail = _config["EmailSettings:SenderEmail"]!;
+            string appPassword = _config["EmailSettings:AppPassword"]!;
 
             var message = new MimeMessage();
             message.From.Add(new MailboxAddress(senderName, senderEmail));
@@ -359,6 +375,19 @@ namespace payroll.API.Controllers
             await client.AuthenticateAsync(senderEmail, appPassword);
             await client.SendAsync(message);
             await client.DisconnectAsync(true);
+        }
+
+        [HttpDelete("delete-draft/{name}/{period}")]
+        public async Task<IActionResult> DeleteDraft(string name, string period)
+        {
+            string decodedName = Uri.UnescapeDataString(name);
+            string decodedPeriod = Uri.UnescapeDataString(period);
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            string sql = "DELETE FROM payslips WHERE employee_name = @Name AND date_generated = @Period AND is_sent = false";
+
+            await connection.ExecuteAsync(sql, new { Name = decodedName, Period = decodedPeriod });
+            return Ok(new { Message = "Draft deleted successfully" });
         }
     }
 }
