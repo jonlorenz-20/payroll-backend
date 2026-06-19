@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Text.Json.Serialization; // 👈 KINAKAILANGAN PARA SA PROPERTIES JSON MAPPING
+using System.Text.Json.Serialization;
 
 namespace payroll
 {
@@ -13,7 +13,6 @@ namespace payroll
 
         public string Department { get; set; } = "";
 
-        // 🎯 FIX: Pinupuwersa nitong basahin ang "position" (maliit ang 'p') mula sa API JSON ng Swagger
         [JsonPropertyName("position")]
         public string Position { get; set; } = "";
 
@@ -27,7 +26,6 @@ namespace payroll
 
         public string ShiftSchedule { get; set; } = "7:00 AM - 4:00 PM";
 
-        // 🎯 FIX: Pinupuwersa nitong basahin ang "dayOff" (camelCase) mula sa API JSON ng Swagger
         [JsonPropertyName("dayOff")]
         public string DayOff { get; set; } = "";
 
@@ -36,5 +34,11 @@ namespace payroll
         public DateTime DateHired { get; set; } = DateTime.Now;
 
         public string Email { get; set; } = "";
+
+        // 🎯 IDINAGDAG: Recurring / Fixed Deductions
+        public double SssDeduct { get; set; }
+        public double PhilhealthDeduct { get; set; }
+        public double PagibigDeduct { get; set; }
+        public double TaxDeduct { get; set; }
     }
 }

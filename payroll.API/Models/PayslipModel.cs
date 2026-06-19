@@ -14,7 +14,11 @@ namespace payroll.API.Models
         public double OvertimePay { get; set; }
         public double OvertimeHours { get; set; }
         public double PerfectAttendance { get; set; }
+
+        // 🎯 DYNAMIC LABELS ADDED
+        public string IncentivesLabel { get; set; } = "Incentives";
         public double Incentives { get; set; }
+
         public double RestDayPay { get; set; }
         public double AbsenceDeduction { get; set; }
         public double LateMinutes { get; set; }
@@ -25,27 +29,27 @@ namespace payroll.API.Models
         public double PhilHealth { get; set; }
         public double PagIBIG { get; set; }
         public double CashAdvanceDeduction { get; set; }
+
+        // 🎯 DYNAMIC LABELS ADDED
+        public string OthersLabel { get; set; } = "Others";
         public double OthersDeduction { get; set; }
+
         public double Deductions { get; set; }
         public double NetPay { get; set; }
         public string DateGenerated { get; set; } = "";
         public bool IsSent { get; set; }
 
-        // --- DTR LOGS HANDLING ---
-
-        // 1. Database Storage (String field)
         public string dtr_logs { get; set; } = "[]";
 
-        // 2. UI Binding (List field) - IGNORE sa JSON/DB para hindi mag-duplicate
         [JsonIgnore]
         public List<DailyLog> DtrLogs { get; set; } = new List<DailyLog>();
 
-        // 🎯 Alias para maiwasan ang validation error
         [JsonIgnore]
         public double MinusMinutes
         {
             get => UndertimeMinutes;
             set => UndertimeMinutes = value;
         }
+        public double Tax { get; set; }
     }
 }
