@@ -43,7 +43,11 @@ namespace payroll.API.Controllers
                                 shift_schedule AS ShiftSchedule, 
                                 day_off AS DayOff, 
                                 cash_advance_balance AS CashAdvanceBalance, 
-                                date_hired AS DateHired 
+                                date_hired AS DateHired,
+                                sss_deduct AS SssDeduct,
+                                philhealth_deduct AS PhilhealthDeduct,
+                                pagibig_deduct AS PagibigDeduct,
+                                tax_deduct AS TaxDeduct
                                FROM employees";
 
                 var employees = await connection.QueryAsync<EmployeeModel>(sql);
@@ -55,7 +59,7 @@ namespace payroll.API.Controllers
             }
         }
 
-        // 2. SAVE NEW EMPLOYEE (PURE INSERT ONLY)
+        // 2. SAVE NEW EMPLOYEE
         [HttpPost]
         public async Task<IActionResult> SaveEmployee([FromBody] EmployeeModel emp)
         {
@@ -67,9 +71,9 @@ namespace payroll.API.Controllers
 
                 string sql = @"
                     INSERT INTO employees 
-                    (biometric_id, name, email, department, position, basis, rate, username, password, shift_schedule, day_off, cash_advance_balance, date_hired) 
+                    (biometric_id, name, email, department, position, basis, rate, username, password, shift_schedule, day_off, cash_advance_balance, date_hired, sss_deduct, philhealth_deduct, pagibig_deduct, tax_deduct) 
                     VALUES 
-                    (@BiometricId, @Name, @Email, @Department, @Position, @Basis, @Rate, @Username, @Password, @ShiftSchedule, @DayOff, @CashAdvanceBalance, @DateHired);";
+                    (@BiometricId, @Name, @Email, @Department, @Position, @Basis, @Rate, @Username, @Password, @ShiftSchedule, @DayOff, @CashAdvanceBalance, @DateHired, @SssDeduct, @PhilhealthDeduct, @PagibigDeduct, @TaxDeduct);";
 
                 await connection.ExecuteAsync(sql, emp);
                 return Ok(new { Message = "Employee saved successfully!" });
@@ -81,8 +85,7 @@ namespace payroll.API.Controllers
             }
         }
 
-        // 🎯 3. IDINAGDAG: DEDIKADONG PUT ENDPOINT PARA SA EDIT AT UPDATE WORKFLOWS
-        // Ito ang tatawagin ng `PayrollService.UpdateEmployeeAsync` mula sa frontend gamit ang Id ng employee!
+        // 3. UPDATE EMPLOYEE
         [HttpPut("{id}")]
         public async Task<IActionResult> UpdateEmployee(int id, [FromBody] EmployeeModel emp)
         {
@@ -106,10 +109,13 @@ namespace payroll.API.Controllers
                         shift_schedule = @ShiftSchedule,
                         day_off = @DayOff,
                         cash_advance_balance = @CashAdvanceBalance,
-                        date_hired = @DateHired
+                        date_hired = @DateHired,
+                        sss_deduct = @SssDeduct,
+                        philhealth_deduct = @PhilhealthDeduct,
+                        pagibig_deduct = @PagibigDeduct,
+                        tax_deduct = @TaxDeduct
                     WHERE id = @Id;";
 
-                // Tinitiyak na ang Id mula sa URL parameter ang gagamitin sa query condition targeting
                 emp.Id = id;
 
                 int rowsAffected = await connection.ExecuteAsync(sql, emp);
