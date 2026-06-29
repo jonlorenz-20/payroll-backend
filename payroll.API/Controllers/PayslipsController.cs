@@ -37,6 +37,16 @@ namespace payroll.API.Controllers
         {
             using var connection = new NpgsqlConnection(_connectionString);
 
+            // 🎯 AUTO-FIX: Create table automatically for employee incentives
+            await connection.ExecuteAsync(@"
+                CREATE TABLE IF NOT EXISTS employee_incentives (
+                    id SERIAL PRIMARY KEY,
+                    employee_name VARCHAR(100),
+                    cutoff_period VARCHAR(100),
+                    incentive_name VARCHAR(100),
+                    amount NUMERIC
+                );");
+
             string sqlSelectAll = @"SELECT 
                                         employee_name AS EmployeeName, 
                                         basis AS Basis, 
@@ -72,6 +82,68 @@ namespace payroll.API.Controllers
             return Ok(result.ToList());
         }
 
+        // 🎯 NEW: GET INCENTIVES API
+        [HttpGet("incentives")]
+        public async Task<IActionResult> GetIncentives()
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            string sql = "SELECT id AS Id, employee_name AS EmployeeName, cutoff_period AS CutoffPeriod, incentive_name AS IncentiveName, amount AS Amount FROM employee_incentives";
+            var result = await connection.QueryAsync<IncentiveModel>(sql);
+            return Ok(result.ToList());
+        }
+
+        // 🎯 NEW: POST BATCH INCENTIVES API (For HR)
+        [HttpPost("incentives/batch")]
+        public async Task<IActionResult> SaveBatchIncentives([FromBody] List<IncentiveModel> incentives)
+        {
+            if (incentives == null || !incentives.Any()) return BadRequest("No incentives to save.");
+
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync();
+            using var transaction = await connection.BeginTransactionAsync();
+
+            try
+            {
+                foreach (var inc in incentives)
+                {
+                    // Delete old record if exists for same employee and cutoff, then insert new
+                    await connection.ExecuteAsync("DELETE FROM employee_incentives WHERE employee_name = @EmployeeName AND cutoff_period = @CutoffPeriod", inc, transaction);
+                    await connection.ExecuteAsync("INSERT INTO employee_incentives (employee_name, cutoff_period, incentive_name, amount) VALUES (@EmployeeName, @CutoffPeriod, @IncentiveName, @Amount)", inc, transaction);
+                }
+
+                await transaction.CommitAsync();
+                return Ok(new { Message = "Batch incentives assigned successfully!" });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                return StatusCode(500, ex.Message);
+            }
+        }
+
+        // 🎯 NEW: GET SALARY REPORTS API
+        [HttpGet("reports")]
+        public async Task<IActionResult> GetSalaryReports()
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+
+            string sql = @"
+                SELECT 
+                    date_generated AS CutoffPeriod, 
+                    COUNT(employee_name) AS EmployeeCount, 
+                    SUM(basic_pay + overtime_pay) AS TotalBaseSalary, 
+                    SUM(incentives) AS TotalIncentives, 
+                    SUM(deductions) AS TotalDeductions, 
+                    SUM(net_pay) AS TotalNetPay 
+                FROM payslips 
+                WHERE is_sent = true
+                GROUP BY date_generated 
+                ORDER BY date_generated DESC";
+
+            var result = await connection.QueryAsync<SalaryReportModel>(sql);
+            return Ok(result.ToList());
+        }
+
         [HttpPost("save")]
         public async Task<IActionResult> SavePayslip([FromBody] PayslipModel slip)
         {
@@ -91,7 +163,6 @@ namespace payroll.API.Controllers
             slip.IsSent = true;
             await InternalDatabaseSync(slip);
 
-            // 🎯 FIX: I-decode muna ang DTR Logs bago i-generate ang PDF para sa Email!
             if (!string.IsNullOrEmpty(slip.dtr_logs) && slip.dtr_logs != "[]" && slip.dtr_logs != "null")
             {
                 try
@@ -159,7 +230,7 @@ namespace payroll.API.Controllers
                 SSS = Convert.ToDouble(row.sss ?? 0),
                 PhilHealth = Convert.ToDouble(row.phil_health ?? 0),
                 PagIBIG = Convert.ToDouble(row.pag_ibig ?? 0),
-                Tax = Convert.ToDouble(row.tax ?? 0), // 🎯 Fixed Tax Mapping
+                Tax = Convert.ToDouble(row.tax ?? 0),
                 CashAdvanceDeduction = Convert.ToDouble(row.cash_advance_deduction ?? 0),
                 DateGenerated = row.date_generated,
                 Position = row.position ?? "Staff"
@@ -406,6 +477,15 @@ namespace payroll.API.Controllers
 
             await connection.ExecuteAsync(sql, new { Name = decodedName, Period = decodedPeriod });
             return Ok(new { Message = "Draft deleted successfully" });
+        }
+
+        // 🎯 NEW: IDINAGDAG ANG DELETE ENDPOINT PARA SA INCENTIVES HISTORY 
+        [HttpDelete("incentives/{id}")]
+        public async Task<IActionResult> DeleteIncentive(int id)
+        {
+            using var connection = new NpgsqlConnection(_connectionString);
+            await connection.ExecuteAsync("DELETE FROM employee_incentives WHERE id = @Id", new { Id = id });
+            return Ok(new { Message = "Incentive deleted successfully." });
         }
     }
 }

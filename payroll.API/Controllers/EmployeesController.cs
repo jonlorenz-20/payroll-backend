@@ -29,6 +29,8 @@ namespace payroll.API.Controllers
             {
                 using var connection = new NpgsqlConnection(_connectionString);
 
+                // 🎯 TINANGGAL NATIN YUNG 'UPDATE' DITO PARA HINDI MAG-RESET PALAGI.
+
                 string sql = @"SELECT 
                                 id AS Id, 
                                 biometric_id AS BiometricId, 
@@ -47,8 +49,10 @@ namespace payroll.API.Controllers
                                 sss_deduct AS SssDeduct,
                                 philhealth_deduct AS PhilhealthDeduct,
                                 pagibig_deduct AS PagibigDeduct,
-                                tax_deduct AS TaxDeduct
+                                tax_deduct AS TaxDeduct,
+                                COALESCE(is_active, true) AS IsActive 
                                FROM employees";
+                // 👆 GINAMITAN NG COALESCE PARA KAPAG NULL, MAGIGING TRUE/ACTIVE
 
                 var employees = await connection.QueryAsync<EmployeeModel>(sql);
                 return Ok(employees.OrderBy(e => e.Name));
@@ -71,9 +75,9 @@ namespace payroll.API.Controllers
 
                 string sql = @"
                     INSERT INTO employees 
-                    (biometric_id, name, email, department, position, basis, rate, username, password, shift_schedule, day_off, cash_advance_balance, date_hired, sss_deduct, philhealth_deduct, pagibig_deduct, tax_deduct) 
+                    (biometric_id, name, email, department, position, basis, rate, username, password, shift_schedule, day_off, cash_advance_balance, date_hired, sss_deduct, philhealth_deduct, pagibig_deduct, tax_deduct, is_active) 
                     VALUES 
-                    (@BiometricId, @Name, @Email, @Department, @Position, @Basis, @Rate, @Username, @Password, @ShiftSchedule, @DayOff, @CashAdvanceBalance, @DateHired, @SssDeduct, @PhilhealthDeduct, @PagibigDeduct, @TaxDeduct);";
+                    (@BiometricId, @Name, @Email, @Department, @Position, @Basis, @Rate, @Username, @Password, @ShiftSchedule, @DayOff, @CashAdvanceBalance, @DateHired, @SssDeduct, @PhilhealthDeduct, @PagibigDeduct, @TaxDeduct, @IsActive);";
 
                 await connection.ExecuteAsync(sql, emp);
                 return Ok(new { Message = "Employee saved successfully!" });
@@ -85,9 +89,9 @@ namespace payroll.API.Controllers
             }
         }
 
-        // 3. UPDATE EMPLOYEE
-        [HttpPut("{id}")]
-        public async Task<IActionResult> UpdateEmployee(int id, [FromBody] EmployeeModel emp)
+        // 3. UPDATE EMPLOYEE (BULLETPROOF FIX)
+        [HttpPut("{identifier}")]
+        public async Task<IActionResult> UpdateEmployee(string identifier, [FromBody] EmployeeModel emp)
         {
             if (emp == null) return BadRequest("Employee data is null.");
 
@@ -95,7 +99,10 @@ namespace payroll.API.Controllers
             {
                 using var connection = new NpgsqlConnection(_connectionString);
 
-                string sql = @"
+                // Check kung ID o Name ang ipinasa ng MAUI App para walang sablay
+                bool isId = int.TryParse(identifier, out int parsedId);
+
+                string updateSql = @"
                     UPDATE employees 
                     SET 
                         biometric_id = @BiometricId,
@@ -113,17 +120,44 @@ namespace payroll.API.Controllers
                         sss_deduct = @SssDeduct,
                         philhealth_deduct = @PhilhealthDeduct,
                         pagibig_deduct = @PagibigDeduct,
-                        tax_deduct = @TaxDeduct
-                    WHERE id = @Id;";
+                        tax_deduct = @TaxDeduct,
+                        is_active = @IsActive ";
 
-                emp.Id = id;
+                // Dynamic SQL query based kung ano ginamit mong identifier
+                if (isId)
+                    updateSql += " WHERE id = @ParsedId;";
+                else
+                    updateSql += " WHERE name = @Identifier;";
 
-                int rowsAffected = await connection.ExecuteAsync(sql, emp);
+                var parameters = new
+                {
+                    emp.BiometricId,
+                    emp.Name,
+                    emp.Email,
+                    emp.Department,
+                    emp.Position,
+                    emp.Basis,
+                    emp.Rate,
+                    emp.Password,
+                    emp.ShiftSchedule,
+                    emp.DayOff,
+                    emp.CashAdvanceBalance,
+                    emp.DateHired,
+                    emp.SssDeduct,
+                    emp.PhilhealthDeduct,
+                    emp.PagibigDeduct,
+                    emp.TaxDeduct,
+                    emp.IsActive,
+                    ParsedId = parsedId,
+                    Identifier = identifier
+                };
+
+                int rowsAffected = await connection.ExecuteAsync(updateSql, parameters);
 
                 if (rowsAffected > 0)
                     return Ok(new { Message = "Employee updated successfully!" });
                 else
-                    return NotFound($"Employee with Id {id} not found.");
+                    return NotFound($"Employee with identifier {identifier} not found.");
             }
             catch (Exception ex)
             {
@@ -139,15 +173,11 @@ namespace payroll.API.Controllers
             try
             {
                 using var connection = new NpgsqlConnection(_connectionString);
-
                 string sql = "DELETE FROM employees WHERE name = @Name";
-
                 int rowsAffected = await connection.ExecuteAsync(sql, new { Name = name });
 
-                if (rowsAffected > 0)
-                    return Ok();
-                else
-                    return NotFound("Employee not found.");
+                if (rowsAffected > 0) return Ok();
+                else return NotFound("Employee not found.");
             }
             catch (Npgsql.PostgresException ex) when (ex.SqlState == "23503")
             {
